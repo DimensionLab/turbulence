@@ -153,10 +153,13 @@ class kEpsilon(PDE):
 
 
 class kEpsilonLSWF(PDE):
-    def __init__(self, nu=1, rho=1):
+    def __init__(self, nu=1, rho=1, y_plus=30):
         # set params
         nu = Number(nu)
         rho = Number(rho)
+
+        # wall distance
+        normal_distance = Number(y_plus)
 
         # coordinates
         x = Symbol("x")
@@ -178,8 +181,6 @@ class kEpsilonLSWF(PDE):
         normal_y = -1 * Symbol("normal_y")  # Flip the direction of normal
         normal_z = -1 * Symbol("normal_z")  # Correct the symbol and flip the direction of normal
 
-        # wall distance
-        normal_distance = Function("normal_distance")(*input_variables)
 
         # Model constants
         C_mu = 0.09
@@ -222,9 +223,9 @@ class kEpsilonLSWF(PDE):
 
         # Correct the calculation of the derivative in the direction of the surface (du/ds)
         du_dsdf = [
-            sum(du_parallel_to_wall_dx[i] * normal[i] for i in range(3)),
-            sum(du_parallel_to_wall_dy[i] * normal[i] for i in range(3)),
-            sum(du_parallel_to_wall_dz[i] * normal[i] for i in range(3)),
+            du_parallel_to_wall_dx[0] * normal_x + du_parallel_to_wall_dy[0] * normal_y + du_parallel_to_wall_dz[0] * normal_z,
+            du_parallel_to_wall_dx[1] * normal_x + du_parallel_to_wall_dy[1] * normal_y + du_parallel_to_wall_dz[1] * normal_z,
+            du_parallel_to_wall_dx[2] * normal_x + du_parallel_to_wall_dy[2] * normal_y + du_parallel_to_wall_dz[2] * normal_z,
         ]
         # Update wall shear stresses to include the w component
         wall_shear_stress_true_x = (
@@ -254,8 +255,9 @@ class kEpsilonLSWF(PDE):
         u_parallel_to_wall_true = u_plus * u_tau
 
         # Gradient of k normal to the wall, now accounting for all three spatial directions
-        k_normal_gradient = normal_x * k.diff(x) + normal_y * k.diff(y) + normal_z * k.diff(z)
-        k_normal_gradient_true = 0
+        # k_normal_gradient = normal_x * k.diff(x) + normal_y * k.diff(y) + normal_z * k.diff(z)
+        # k_normal_gradient_true = 0
+        k_true = u_tau ** 2 / C_mu ** 0.5
 
         # Set equations with 3D considerations
         self.equations = {}
@@ -265,6 +267,7 @@ class kEpsilonLSWF(PDE):
         self.equations["velocity_wall_parallel_wf"] = (
             u_parallel_to_wall_mag - u_parallel_to_wall_true
         )
+        self.equations["k_wf"] = k - k_true
         self.equations["ep_wf"] = ep - ep_true
         self.equations["wall_shear_stress_x_wf"] = (
             wall_shear_stress_x - wall_shear_stress_true_x
@@ -401,7 +404,7 @@ class kEpsilonLSWFTransient(PDE):
         # normals
         normal_x = -1 * Symbol("normal_x")  # Flip the direction of normal
         normal_y = -1 * Symbol("normal_y")  # Flip the direction of normal
-        normal_z = -1 * Symbol("normal_z")  # Correct the symbol and flip the direction of normal
+        normal_z = -1 * Symbol("normal_z")  # Flip the direction of normal
 
         # wall distance
         normal_distance = Function("normal_distance")(*input_variables)
@@ -447,9 +450,9 @@ class kEpsilonLSWFTransient(PDE):
 
         # Correct the calculation of the derivative in the direction of the surface (du/ds)
         du_dsdf = [
-            sum(du_parallel_to_wall_dx[i] * normal[i] for i in range(3)),
-            sum(du_parallel_to_wall_dy[i] * normal[i] for i in range(3)),
-            sum(du_parallel_to_wall_dz[i] * normal[i] for i in range(3)),
+            du_parallel_to_wall_dx[0] * normal_x + du_parallel_to_wall_dy[0] * normal_y + du_parallel_to_wall_dz[0] * normal_z,
+            du_parallel_to_wall_dx[1] * normal_x + du_parallel_to_wall_dy[1] * normal_y + du_parallel_to_wall_dz[1] * normal_z,
+            du_parallel_to_wall_dx[2] * normal_x + du_parallel_to_wall_dy[2] * normal_y + du_parallel_to_wall_dz[2] * normal_z,
         ]
         # Update wall shear stresses to include the w component
         wall_shear_stress_true_x = (
