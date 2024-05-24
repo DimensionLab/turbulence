@@ -179,7 +179,7 @@ class kEpsilonLSWF(PDE):
         # normals
         normal_x = -1 * Symbol("normal_x")  # Flip the direction of normal
         normal_y = -1 * Symbol("normal_y")  # Flip the direction of normal
-        normal_z = -1 * Symbol("normal_z")  # Correct the symbol and flip the direction of normal
+        normal_z = -1 * Symbol("normal_z")  # Flip the direction of normal
 
 
         # Model constants

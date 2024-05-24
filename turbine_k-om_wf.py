@@ -34,18 +34,9 @@ from modulus.key import Key
 from modulus.node import Node
 from modulus.eq.pdes.navier_stokes import NavierStokes
 
-from custom_k_ep_3D import kEpsilonTransient, kEpsilonInit, kEpsilonLSWF
+from custom_k_om_3D import TransientkOmega, kOmegaInit, kOmegaStdWF
 
-#set working dir to current - doesn't work in docker
-"""
-print(os.getcwd())
-abspath = os.path.abspath(__file__)
-print(abspath)
-dname = os.path.dirname(abspath)
-print(dname)
-os.chdir(dname)
-print(os.getcwd())
-"""
+
 
 @modulus.main(config_path="conf", config_name="config") #config_fourier
 def run(cfg: ModulusConfig) -> None:
@@ -56,13 +47,13 @@ def run(cfg: ModulusConfig) -> None:
     time_window_size = 10.0
     t_symbol = Symbol("t")
     time_range = {t_symbol: (0, time_window_size)}
-    nr_time_windows = 1  # number of networks that will train (each time window has a single net)
+    nr_time_windows = 1
 
     # make navier stokes equations - air of 20 deg C - nu=0.000015, rho=1.2
     # ns = NavierStokes(nu=0.000015, rho=1.2, dim=3, time=True)
-    init = kEpsilonInit(nu=nu, rho=1.2)
-    ns = kEpsilonTransient(nu=nu, rho=1.2)
-    wf = kEpsilonLSWF(nu=nu, rho=1.2, y_plus=resolved_y_start)
+    init = kOmegaInit(nu=nu, rho=1.2)
+    ns = TransientkOmega(nu=nu, rho=1.2)
+    wf = kOmegaStdWF(nu=nu, rho=1.2)
 
     # define sympy variables to parametrize domain curves
     x, y, z = Symbol("x"), Symbol("y"), Symbol("z")
@@ -215,9 +206,9 @@ def run(cfg: ModulusConfig) -> None:
         output_keys=[Key("k_star")],
         layer_size=256,
     )
-    ep_net = FullyConnectedArch(
+    om_net = FullyConnectedArch(
         input_keys=[Key("x"), Key("y"), Key("z"), Key("t")],
-        output_keys=[Key("ep_star")],
+        output_keys=[Key("om_star")],
         layer_size=256,
     )
     p_net = FullyConnectedArch(
@@ -239,7 +230,7 @@ def run(cfg: ModulusConfig) -> None:
     time_window_net = MovingTimeWindowArch(flow_net, time_window_size)
     time_window_net_k = MovingTimeWindowArch(k_net, time_window_size)
     time_window_net_p = MovingTimeWindowArch(p_net, time_window_size)
-    time_window_net_ep = MovingTimeWindowArch(ep_net, time_window_size)
+    time_window_net_om = MovingTimeWindowArch(om_net, time_window_size)
 
     # make nodes to unroll graph on
     nodes = (init.make_nodes() 
@@ -248,11 +239,9 @@ def run(cfg: ModulusConfig) -> None:
             + [time_window_net.make_node(name="time_window_network")]
             + [time_window_net_k.make_node(name="time_window_network_k")]
             + [time_window_net_p.make_node(name="time_window_network_p")]
-            + [time_window_net_ep.make_node(name="time_window_network_ep")]
+            + [time_window_net_om.make_node(name="time_window_network_om")]
             + [Node.from_sympy(Min(log(1 + exp(Symbol("k_star"))) + 1e-4, 20), "k")]
-            + [Node.from_sympy(Min(log(1 + exp(Symbol("ep_star"))) + 1e-4, 180), "ep")])
-
-
+            + [Node.from_sympy(Min(log(1 + exp(Symbol("om_star"))) + 1e-4, 20), "om_plus")])
 
     nodes_u_tau = (
     # Defining input and parallel velocity to the wall nodes for 3D
@@ -418,7 +407,8 @@ def run(cfg: ModulusConfig) -> None:
             "u": 0, "v": 0, "w": 0,
             "velocity_wall_normal_wf": 0,
             "velocity_wall_parallel_wf": 0,
-            "ep_wf": 0,
+            "om_plus_wf": 0,
+            "k_wf": 0,
             "wall_shear_stress_x_wf": 0,
             "wall_shear_stress_y_wf": 0,
             "wall_shear_stress_z_wf": 0,
@@ -427,14 +417,14 @@ def run(cfg: ModulusConfig) -> None:
             "u": 100, "v": 100, "w": 100,
             "velocity_wall_normal_wf": 100,
             "velocity_wall_parallel_wf": 100,
-            "ep_wf": 1,
+            "om_plus_wf": 10,
+            "k_wf": 1,
             "wall_shear_stress_x_wf": 100,
             "wall_shear_stress_y_wf": 100,
             "wall_shear_stress_z_wf": 100,
         },
         batch_size=cfg.batch_size.initial_condition,
         parameterization={"normal_distance": resolved_y_start, t_symbol: (0, time_window_size)},
-        #parameterization=time_range,
     )
     ic_domain.add_constraint(wf_pt_blades, "WF_blades")
     window_domain.add_constraint(wf_pt_blades, "WF_blades")
@@ -449,7 +439,7 @@ def run(cfg: ModulusConfig) -> None:
             "momentum_y": 0,
             "momentum_z": 0,
             "k_equation": 0,
-            "ep_equation": 0,
+            "om_plus_equation": 0,
         },
         batch_size=cfg.batch_size.initial_condition,
         lambda_weighting={
@@ -458,7 +448,7 @@ def run(cfg: ModulusConfig) -> None:
             "momentum_y": 1000,
             "momentum_z": 1000,
             "k_equation": 10,
-            "ep_equation": 1,
+            "om_plus_equation": 1,
         },
         parameterization=time_range,
     )
@@ -470,7 +460,7 @@ def run(cfg: ModulusConfig) -> None:
         nodes=nodes,
         geometry=rec,
         bounds=box_bounds,
-        outvar={"u_init": 0, "v_init": 0, "w_init": 0, "k_init": 0, "p_init": 0, "ep_init": 0},
+        outvar={"u_init": 0, "v_init": 0, "w_init": 0, "k_init": 0, "p_init": 0, "om_plus_init": 0},
         batch_size=cfg.batch_size.interior_init,
         parameterization={t_symbol: 0},
     )
@@ -519,9 +509,9 @@ def run(cfg: ModulusConfig) -> None:
         )
         grid_inference = PointVTKInferencer(
             vtk_obj=vtk_obj,
-            nodes=nodes + nodes_u_tau,
+            nodes=nodes,
             input_vtk_map={"x": "x", "y": "y", "z": "z"},
-            output_names=["u", "v", "w", "p", "k", "ep"],
+            output_names=["u", "v", "w", "p", "k", "om_plus"],
             requires_grad=False,
             invar={"t": np.full([64 ** 3, 1], specific_time)},
             batch_size=10000,
