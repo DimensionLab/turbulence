@@ -21,6 +21,7 @@ from modulus.geometry.primitives_3d import Box
 from modulus.geometry.parameterization import OrderedParameterization
 
 from modulus.models.fully_connected import FullyConnectedArch
+from modulus.models.fourier_net import FourierNetArch
 from modulus.models.moving_time_window import MovingTimeWindowArch
 from modulus.domain.constraint import (
     PointwiseBoundaryConstraint,
@@ -189,18 +190,18 @@ def run(cfg: ModulusConfig) -> None:
     u, v, w = rectangular_inlet(x, y, z, center_of_inlet, 10)
 
     # make networks for current step and previous step
-    #"""
+    #""" FourierNetArch
     u_tau_net = FullyConnectedArch(
         input_keys=[Key("u_in"), Key("y_in")],
         output_keys=[Key("u_tau_out")],
         layer_size=256,
     )
+    """
     flow_net = FullyConnectedArch(
         input_keys=[Key("x"), Key("y"), Key("z"), Key("t")],
         output_keys=[Key("u"), Key("v"), Key("w")],
         layer_size=256,
     )
-
     k_net = FullyConnectedArch(
         input_keys=[Key("x"), Key("y"), Key("z"), Key("t")],
         output_keys=[Key("k_star")],
@@ -216,16 +217,38 @@ def run(cfg: ModulusConfig) -> None:
         output_keys=[Key("p")],
         layer_size=256,
     )
-
     """
+
+    
     flow_net = instantiate_arch(
         input_keys=[Key("x"), Key("y"), Key("z"), Key("t")],
-        output_keys=[Key("u"), Key("v"), Key("w"), Key("p"), Key("k_star"), Key("ep_star")],
+        output_keys=[Key("u"), Key("v"), Key("w")],
         frequencies=("axis", [i / 2 for i in range(8)]),
         frequencies_params=("axis", [i / 2 for i in range(8)]),
         cfg=cfg.arch.fourier,
     )
-    """
+    k_net = instantiate_arch(
+        input_keys=[Key("x"), Key("y"), Key("z"), Key("t")],
+        output_keys=[Key("k_star")],
+        frequencies=("axis", [i / 2 for i in range(8)]),
+        frequencies_params=("axis", [i / 2 for i in range(8)]),
+        cfg=cfg.arch.fourier,
+    )
+    om_net = instantiate_arch(
+        input_keys=[Key("x"), Key("y"), Key("z"), Key("t")],
+        output_keys=[Key("om_star")],
+        frequencies=("axis", [i / 2 for i in range(8)]),
+        frequencies_params=("axis", [i / 2 for i in range(8)]),
+        cfg=cfg.arch.fourier,
+    )
+    p_net = instantiate_arch(
+        input_keys=[Key("x"), Key("y"), Key("z"), Key("t")],
+        output_keys=[Key("p")],
+        frequencies=("axis", [i / 2 for i in range(8)]),
+        frequencies_params=("axis", [i / 2 for i in range(8)]),
+        cfg=cfg.arch.fourier,
+    )
+    
 
     time_window_net = MovingTimeWindowArch(flow_net, time_window_size)
     time_window_net_k = MovingTimeWindowArch(k_net, time_window_size)
@@ -348,63 +371,12 @@ def run(cfg: ModulusConfig) -> None:
     ic_domain.add_constraint(noslipBC, "noslipBC")
     window_domain.add_constraint(noslipBC, "noslipBC")
     
-    """
-    # Point where wall funciton is applied
-    wf_pt = PointwiseBoundaryConstraint(
-        nodes=nodes,
-        geometry=rec,
-        outvar={
-            # "u": 0, "v": 0, "w": 0,
-            "velocity_wall_normal_wf": 0,
-            "velocity_wall_parallel_wf": 0,
-            "ep_wf": 0,
-            "wall_shear_stress_x_wf": 0,
-            "wall_shear_stress_y_wf": 0,
-            "wall_shear_stress_z_wf": 0,
-        },
-        lambda_weighting={
-            # "u": 100, "v": 100, "w": 100,
-            "velocity_wall_normal_wf": 100,
-            "velocity_wall_parallel_wf": 100,
-            "ep_wf": 1,
-            "wall_shear_stress_x_wf": 100,
-            "wall_shear_stress_y_wf": 100,
-            "wall_shear_stress_z_wf": 100,
-        },
-        batch_size=cfg.batch_size.initial_condition,
-        # criteria for all side walls
-        criteria=And((y > channel_length[0]), 
-                    (y < channel_length[1]), 
-                    Or(
-                        Or(Eq(x, channel_width[0]), Eq(x, channel_width[1])), 
-                        Or(Eq(z, channel_height[0]), Eq(z, channel_height[1]))
-                    )
-                ),
-        parameterization=time_range,
-    )
-    ic_domain.add_constraint(wf_pt, "WF")
-    window_domain.add_constraint(wf_pt, "WF")
-    """
-    
-    # blade geometry BC
-    """
-    bladesBC = PointwiseBoundaryConstraint(
-        nodes=nodes,
-        geometry=blades,
-        outvar={"u": 0, "v": 0, "w": 0},
-        batch_size=cfg.batch_size.initial_condition,
-        lambda_weighting={"u": 100, "v": 100, "w": 100},
-        parameterization=time_range,
-    )
-    ic_domain.add_constraint(bladesBC, "bladesBC")
-    window_domain.add_constraint(bladesBC, "bladesBC")
-    """
     #  there should be turbulence caused by the solid material of blades
     wf_pt_blades = PointwiseBoundaryConstraint(
         nodes=nodes + nodes_u_tau,
         geometry=blades,
         outvar={
-            "u": 0, "v": 0, "w": 0,
+            #"u": 0, "v": 0, "w": 0,
             "velocity_wall_normal_wf": 0,
             "velocity_wall_parallel_wf": 0,
             "om_plus_wf": 0,
@@ -414,7 +386,7 @@ def run(cfg: ModulusConfig) -> None:
             "wall_shear_stress_z_wf": 0,
         },
         lambda_weighting={
-            "u": 100, "v": 100, "w": 100,
+            #"u": 100, "v": 100, "w": 100,
             "velocity_wall_normal_wf": 100,
             "velocity_wall_parallel_wf": 100,
             "om_plus_wf": 10,
@@ -448,7 +420,7 @@ def run(cfg: ModulusConfig) -> None:
             "momentum_y": 1000,
             "momentum_z": 1000,
             "k_equation": 10,
-            "om_plus_equation": 1,
+            "om_plus_equation": 0.1,
         },
         parameterization=time_range,
     )

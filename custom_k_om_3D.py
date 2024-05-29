@@ -31,7 +31,7 @@ class kOmegaInit(PDE):
 
         # flow initialization
         C_mu = 0.09
-        u_avg = 15  # Approx average velocity
+        u_avg = 0  # Approx average velocity - if I expect no velocity, just set it to 0
         Re_d = (
             u_avg * 1 / nu
         )  # Reynolds number based on centerline and channel hydraulic dia
@@ -41,12 +41,12 @@ class kOmegaInit(PDE):
         )  # Turbulent intensity for a fully developed pipe flow
 
         u_init = 0
-        v_init = u_avg
+        v_init = 0 # u_avg
         w_init = 0  # Setting initial value for w component
-        p_init = pi / 2
-        k_init = 1.5 * (u_avg * I) ** 2
-        ep_init = (C_mu ** (3 / 4)) * (k_init ** (3 / 2)) / l
-        om_plus_init = ep_init / C_mu / k_init * nu  # Solving for om_plus
+        p_init = 0  # pi / 2
+        k_init = 0  # 1.5 * (u_avg * I) ** 2
+        ep_init = 0  # (C_mu ** (3 / 4)) * (k_init ** (3 / 2)) / l
+        om_plus_init = 0  # ep_init / C_mu / k_init * nu  # Solving for om_plus
 
         # set equations
         self.equations = {}
@@ -104,8 +104,8 @@ class TransientkOmega(PDE):
 
         # set equations
         self.equations = {}
-        self.equations["continuity"] = simplify(u.diff(x) + v.diff(y) + w.diff(z))
-        self.equations["momentum_x"] = simplify(
+        self.equations["continuity"] = (u.diff(x) + v.diff(y) + w.diff(z))
+        self.equations["momentum_x"] = (
             rho * u.diff(t)
             + u * u.diff(x)
             + v * u.diff(y)
@@ -115,7 +115,7 @@ class TransientkOmega(PDE):
             - ((nu + nu_t) * u.diff(y)).diff(y)
             - ((nu + nu_t) * u.diff(z)).diff(z)
         )
-        self.equations["momentum_y"] = simplify(
+        self.equations["momentum_y"] = (
             rho * v.diff(t)
             + u * v.diff(x)
             + v * v.diff(y)
@@ -125,7 +125,7 @@ class TransientkOmega(PDE):
             - ((nu + nu_t) * v.diff(y)).diff(y)
             - ((nu + nu_t) * v.diff(z)).diff(z)
         )
-        self.equations["momentum_z"] = simplify(
+        self.equations["momentum_z"] = (
             rho * w.diff(t)
             + u * w.diff(x)
             + v * w.diff(y)
@@ -135,7 +135,7 @@ class TransientkOmega(PDE):
             - ((nu + nu_t) * w.diff(y)).diff(y)
             - ((nu + nu_t) * w.diff(z)).diff(z)
         )
-        self.equations["k_equation"] = simplify(
+        self.equations["k_equation"] = (
             k.diff(t)
             + u * k.diff(x)
             + v * k.diff(y)
@@ -146,7 +146,7 @@ class TransientkOmega(PDE):
             - P_k
             + beta_star * k * om_plus / nu
         )
-        self.equations["om_plus_equation"] = simplify(
+        self.equations["om_plus_equation"] = (
             om_plus.diff(t)
             + u * om_plus.diff(x) / nu
             + v * om_plus.diff(y) / nu
