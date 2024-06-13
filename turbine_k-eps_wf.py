@@ -2,6 +2,7 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 import numpy as np
 import os
+import importlib # to use when I make changes to modulus on disc
 
 from sympy import Symbol, Eq, Abs, sin, cos, And, Or, Number, Function, simplify, exp, Min, Max, log, sqrt
 from modulus.eq.pde import PDE
@@ -13,9 +14,8 @@ from modulus.solver import SequentialSolver
 from modulus.domain import Domain
 from modulus.geometry.tessellation import Tessellation
 
-
-from modulus.loss.loss import CausalLossNorm
-
+importlib.reload(modulus)
+print("Module path:", modulus.__file__)
 
 from modulus.geometry.primitives_3d import Box
 from modulus.geometry.parameterization import OrderedParameterization
@@ -198,12 +198,12 @@ def run(cfg: ModulusConfig) -> None:
     u, v, w = rectangular_inlet(x, y, z, center_of_inlet, 10)
 
     # make networks for current step and previous step
-    #"""
     u_tau_net = FullyConnectedArch(
         input_keys=[Key("u_in"), Key("y_in")],
         output_keys=[Key("u_tau_out")],
         layer_size=256,
     )
+    """
     flow_net = FullyConnectedArch(
         input_keys=[Key("x"), Key("y"), Key("z"), Key("t")],
         output_keys=[Key("u"), Key("v"), Key("w")],
@@ -227,14 +227,37 @@ def run(cfg: ModulusConfig) -> None:
     )
 
     """
+
+        
     flow_net = instantiate_arch(
         input_keys=[Key("x"), Key("y"), Key("z"), Key("t")],
-        output_keys=[Key("u"), Key("v"), Key("w"), Key("p"), Key("k_star"), Key("ep_star")],
+        output_keys=[Key("u"), Key("v"), Key("w")],
         frequencies=("axis", [i / 2 for i in range(8)]),
         frequencies_params=("axis", [i / 2 for i in range(8)]),
         cfg=cfg.arch.fourier,
     )
-    """
+    k_net = instantiate_arch(
+        input_keys=[Key("x"), Key("y"), Key("z"), Key("t")],
+        output_keys=[Key("k_star")],
+        frequencies=("axis", [i / 2 for i in range(8)]),
+        frequencies_params=("axis", [i / 2 for i in range(8)]),
+        cfg=cfg.arch.fourier,
+    )
+    ep_net = instantiate_arch(
+        input_keys=[Key("x"), Key("y"), Key("z"), Key("t")],
+        output_keys=[Key("ep_star")],
+        frequencies=("axis", [i / 2 for i in range(8)]),
+        frequencies_params=("axis", [i / 2 for i in range(8)]),
+        cfg=cfg.arch.fourier,
+    )
+    p_net = instantiate_arch(
+        input_keys=[Key("x"), Key("y"), Key("z"), Key("t")],
+        output_keys=[Key("p")],
+        frequencies=("axis", [i / 2 for i in range(8)]),
+        frequencies_params=("axis", [i / 2 for i in range(8)]),
+        cfg=cfg.arch.fourier,
+    )
+
 
     time_window_net = MovingTimeWindowArch(flow_net, time_window_size)
     time_window_net_k = MovingTimeWindowArch(k_net, time_window_size)
@@ -418,19 +441,11 @@ def run(cfg: ModulusConfig) -> None:
             "u": 0, "v": 0, "w": 0,
             "velocity_wall_normal_wf": 0,
             "velocity_wall_parallel_wf": 0,
-            "ep_wf": 0,
-            "wall_shear_stress_x_wf": 0,
-            "wall_shear_stress_y_wf": 0,
-            "wall_shear_stress_z_wf": 0,
         },
         lambda_weighting={
             "u": 100, "v": 100, "w": 100,
             "velocity_wall_normal_wf": 100,
             "velocity_wall_parallel_wf": 100,
-            "ep_wf": 1,
-            "wall_shear_stress_x_wf": 100,
-            "wall_shear_stress_y_wf": 100,
-            "wall_shear_stress_z_wf": 100,
         },
         batch_size=cfg.batch_size.initial_condition,
         parameterization={"normal_distance": resolved_y_start, t_symbol: (0, time_window_size)},
@@ -438,6 +453,20 @@ def run(cfg: ModulusConfig) -> None:
     )
     ic_domain.add_constraint(wf_pt_blades, "WF_blades")
     window_domain.add_constraint(wf_pt_blades, "WF_blades")
+
+    """
+
+            "ep_wf": 0,
+            "wall_shear_stress_x_wf": 0,
+            "wall_shear_stress_y_wf": 0,
+            "wall_shear_stress_z_wf": 0,
+            
+            "ep_wf": 10,
+            "wall_shear_stress_x_wf": 100,
+            "wall_shear_stress_y_wf": 100,
+            "wall_shear_stress_z_wf": 100,
+
+    """
 
     ic = PointwiseInteriorConstraint(
         nodes=nodes,
@@ -523,7 +552,7 @@ def run(cfg: ModulusConfig) -> None:
             input_vtk_map={"x": "x", "y": "y", "z": "z"},
             output_names=["u", "v", "w", "p", "k", "ep"],
             requires_grad=False,
-            invar={"t": np.full([64 ** 3, 1], specific_time)},
+            invar={"t": np.full([64 ** 3, 1], specific_time),},
             batch_size=10000,
         )
         ic_domain.add_inferencer(grid_inference, name="time_slice_" + str(i).zfill(4))
